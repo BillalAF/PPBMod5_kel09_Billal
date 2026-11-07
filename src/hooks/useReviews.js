@@ -1,48 +1,38 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import { useQuery } from './useQuery'
+import { queryCache } from '../utils/queryCache'
 import reviewService from '../services/reviewService'
 
 // ---------------------------------------------------------------------------
-// useReviews — fetch reviews for a specific product.
+// useReviews — fetch reviews for a specific product with Query Caching.
 // ---------------------------------------------------------------------------
 
 export function useReviews(gunId) {
-  const [reviews, setReviews] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-
-  const fetchReviews = useCallback(async () => {
-    if (!gunId) {
-      setLoading(false)
-      return
-    }
-    try {
-      setLoading(true)
-      setError(null)
-
+  const { data, loading, error, refetch } = useQuery({
+    queryKey: ['reviews', gunId],
+    queryFn: async () => {
+      if (!gunId) return []
       const response = await reviewService.getReviews(gunId)
-
-      if (response.success) {
-        setReviews(response.data || [])
-      } else {
-        setError(response.message || 'Failed to fetch reviews.')
+      if (response && response.success) {
+        return response.data || []
       }
-    } catch (err) {
-      setError(err.message || 'An error occurred while fetching reviews.')
-      setReviews([])
-    } finally {
-      setLoading(false)
-    }
-  }, [gunId])
+      throw new Error(response?.message || 'Failed to fetch reviews.')
+    },
+    enabled: Boolean(gunId),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  })
 
-  useEffect(() => {
-    fetchReviews()
-  }, [fetchReviews])
-
-  return { reviews, loading, error, refetch: fetchReviews }
+  return {
+    reviews: data || [],
+    loading,
+    error,
+    refetch,
+  }
 }
 
 // ---------------------------------------------------------------------------
 // useCreateReview — submit a new review for a product.
+// Invalidates review query cache so newly posted reviews appear immediately.
 // ---------------------------------------------------------------------------
 
 export function useCreateReview() {
@@ -60,6 +50,7 @@ export function useCreateReview() {
 
       if (response.success) {
         setSuccess(true)
+        queryCache.invalidate(['reviews', gunId])
         return response.data
       } else {
         setError(response.message || 'Failed to submit review.')

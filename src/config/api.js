@@ -17,6 +17,18 @@ if (!BASE_URL) {
   console.warn(
     '[api] VITE_API_BASE_URL is not set. API requests will use relative paths.',
   )
+} else if (import.meta.env.DEV) {
+  if (IS_SUPABASE) {
+    console.log(
+      `%c[Database] Supabase Configured: ${BASE_URL}`,
+      'color: #10b981; font-weight: bold; font-size: 12px;',
+    )
+  } else {
+    console.log(
+      `%c[Database] API Server Configured: ${BASE_URL}`,
+      'color: #3b82f6; font-weight: bold; font-size: 12px;',
+    )
+  }
 }
 
 // ---------------------------------------------------------------------------

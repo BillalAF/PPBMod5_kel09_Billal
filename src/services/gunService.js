@@ -1,4 +1,5 @@
 import { apiClient, IS_SUPABASE } from '../config/api'
+import { queryCache } from '../utils/queryCache'
 
 // ---------------------------------------------------------------------------
 // Normalizer — standardizes product shape whether received from Supabase
@@ -147,9 +148,12 @@ class GunService {
         headers: { Prefer: 'return=representation' },
       })
       const created = Array.isArray(res) ? res[0] : res
+      queryCache.invalidate('guns')
       return { success: true, data: normalizeProduct(created) }
     }
-    return apiClient.post('/api/v1/recipes', data)
+    const result = await apiClient.post('/api/v1/recipes', data)
+    queryCache.invalidate('guns')
+    return result
   }
 
   /**
@@ -180,9 +184,14 @@ class GunService {
         headers: { Prefer: 'return=representation' },
       })
       const updated = Array.isArray(res) ? res[0] : res
+      queryCache.invalidate('guns')
+      queryCache.invalidate(['gun', id])
       return { success: true, data: normalizeProduct(updated) }
     }
-    return apiClient.put(`/api/v1/recipes/${id}`, data)
+    const result = await apiClient.put(`/api/v1/recipes/${id}`, data)
+    queryCache.invalidate('guns')
+    queryCache.invalidate(['gun', id])
+    return result
   }
 
   /**
@@ -192,7 +201,10 @@ class GunService {
     if (IS_SUPABASE) {
       return this.updateGun(id, data)
     }
-    return apiClient.patch(`/api/v1/recipes/${id}`, data)
+    const result = await apiClient.patch(`/api/v1/recipes/${id}`, data)
+    queryCache.invalidate('guns')
+    queryCache.invalidate(['gun', id])
+    return result
   }
 
   /**
@@ -201,9 +213,14 @@ class GunService {
   async deleteGun(id) {
     if (IS_SUPABASE) {
       await apiClient.delete(`/rest/v1/products?id=eq.${id}`)
+      queryCache.invalidate('guns')
+      queryCache.invalidate(['gun', id])
       return { success: true }
     }
-    return apiClient.delete(`/api/v1/recipes/${id}`)
+    const result = await apiClient.delete(`/api/v1/recipes/${id}`)
+    queryCache.invalidate('guns')
+    queryCache.invalidate(['gun', id])
+    return result
   }
 }
 

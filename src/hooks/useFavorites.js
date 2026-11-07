@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import { useQuery } from './useQuery'
+import { queryCache } from '../utils/queryCache'
 import favoriteService from '../services/favoriteService'
 import { getUserIdentifier } from '../services/userService'
 
@@ -26,50 +28,51 @@ const writeLocalFavs = (ids) => {
   }
 }
 
+/**
+ * Invalidate cached favorites queries across the app.
+ */
+export function invalidateFavoritesCache() {
+  queryCache.invalidate('favorites')
+}
+
 // ---------------------------------------------------------------------------
-// useFavorites — list all favourited product IDs.
+// useFavorites — list all favourited product IDs with Query Caching.
 //
-// First attempts the server; on failure uses localStorage.
+// Prevents duplicate queries when multiple GunCards mount simultaneously.
 // ---------------------------------------------------------------------------
 
 export function useFavorites() {
-  const [favorites, setFavorites] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [isLocal, setIsLocal] = useState(false)
   const userIdentifier = getUserIdentifier()
 
-  const fetchFavorites = useCallback(async () => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      const response = await favoriteService.getFavorites(userIdentifier)
-
-      if (response.success) {
-        setFavorites(response.data || [])
-        setIsLocal(false)
-      } else {
-        throw new Error(response.message)
+  const { data, loading, error, isStale, refetch } = useQuery({
+    queryKey: ['favorites', userIdentifier],
+    queryFn: async () => {
+      try {
+        const response = await favoriteService.getFavorites(userIdentifier)
+        if (response && response.success) {
+          return { list: response.data || [], isLocal: false }
+        }
+        throw new Error(response?.message || 'Failed to fetch favorites')
+      } catch {
+        return { list: readLocalFavs(), isLocal: true }
       }
-    } catch {
-      // Fallback to localStorage
-      setFavorites(readLocalFavs())
-      setIsLocal(true)
-    } finally {
-      setLoading(false)
-    }
-  }, [userIdentifier])
+    },
+    staleTime: 60 * 1000, // 1 minute
+  })
 
-  useEffect(() => {
-    fetchFavorites()
-  }, [fetchFavorites])
-
-  return { favorites, loading, error, isLocal, refetch: fetchFavorites }
+  return {
+    favorites: data?.list || [],
+    isLocal: Boolean(data?.isLocal),
+    loading,
+    error,
+    isStale,
+    refetch,
+  }
 }
 
 // ---------------------------------------------------------------------------
 // useToggleFavorite — toggle a product in/out of favourites.
+// Invalidates the favorites cache to automatically notify all subscribers.
 // ---------------------------------------------------------------------------
 
 export function useToggleFavorite() {
@@ -87,10 +90,11 @@ export function useToggleFavorite() {
         user_identifier: userIdentifier,
       })
 
-      if (response.success) {
+      if (response && response.success) {
+        queryCache.invalidate(['favorites', userIdentifier])
         return response.data
       }
-      throw new Error(response.message)
+      throw new Error(response?.message || 'Failed to toggle favorite')
     } catch {
       // Fallback: toggle in localStorage
       const current = readLocalFavs()
@@ -105,6 +109,7 @@ export function useToggleFavorite() {
         isFavorited = false
       }
       writeLocalFavs(current)
+      queryCache.invalidate(['favorites', userIdentifier])
       return { is_favorited: isFavorited }
     } finally {
       setLoading(false)
@@ -119,7 +124,7 @@ export function useToggleFavorite() {
 // ---------------------------------------------------------------------------
 
 export function useIsFavorited(gunId) {
-  const { favorites, loading: fetchLoading, refetch } = useFavorites()
+  const { favorites, loading: fetchLoading } = useFavorites()
   const { toggleFavorite: toggle, loading: toggleLoading } = useToggleFavorite()
 
   // Check both server-format (objects with .id) and local-format (plain ids)
@@ -129,9 +134,7 @@ export function useIsFavorited(gunId) {
   })
 
   const toggleFavorite = async () => {
-    const result = await toggle(gunId)
-    if (result) await refetch()
-    return result
+    return toggle(gunId)
   }
 
   return {

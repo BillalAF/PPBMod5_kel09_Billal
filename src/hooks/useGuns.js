@@ -1,50 +1,45 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useQuery } from './useQuery'
+import { queryCache } from '../utils/queryCache'
 import gunService from '../services/gunService'
+
+/**
+ * Invalidate cached gun queries across the entire app.
+ * Called automatically after create, update, or delete operations.
+ */
+export function invalidateGunsCache() {
+  queryCache.invalidate('guns')
+  queryCache.invalidate('gun')
+}
 
 // ---------------------------------------------------------------------------
 // useGuns — fetch the paginated / filtered product list from the API.
 //
 // Returns { guns, loading, error, pagination, refetch }.
-// When the API is unreachable the `error` string will be set and `guns`
-// will remain an empty array so the UI can show a proper error state.
+// Utilises Query Caching to prevent redundant API calls when navigating tabs.
 // ---------------------------------------------------------------------------
-
 export function useGuns(params = {}) {
-  const [guns, setGuns] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [pagination, setPagination] = useState(null)
-
-  // Serialise params so the effect re-runs when they change.
-  const paramKey = JSON.stringify(params)
-
-  const fetchGuns = useCallback(async () => {
-    try {
-      setLoading(true)
-      setError(null)
-
+  const { data, loading, error, refetch } = useQuery({
+    queryKey: ['guns', params],
+    queryFn: async () => {
       const response = await gunService.getGuns(params)
-
-      if (response.success) {
-        setGuns(response.data || [])
-        setPagination(response.pagination || null)
-      } else {
-        setError(response.message || 'Failed to fetch products.')
+      if (response && response.success !== false) {
+        return {
+          guns: response.data || [],
+          pagination: response.pagination || null,
+        }
       }
-    } catch (err) {
-      setError(err.message || 'An error occurred while fetching products.')
-      setGuns([])
-    } finally {
-      setLoading(false)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paramKey])
+      throw new Error(response?.message || 'Failed to fetch products.')
+    },
+    staleTime: 3 * 60 * 1000, // 3 minutes
+  })
 
-  useEffect(() => {
-    fetchGuns()
-  }, [fetchGuns])
-
-  return { guns, loading, error, pagination, refetch: fetchGuns }
+  return {
+    guns: data?.guns || [],
+    pagination: data?.pagination || null,
+    loading,
+    error,
+    refetch,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -52,39 +47,25 @@ export function useGuns(params = {}) {
 //
 // Returns { gun, loading, error, refetch }.
 // ---------------------------------------------------------------------------
-
 export function useGunById(id) {
-  const [gun, setGun] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-
-  const fetchGun = useCallback(async () => {
-    if (!id) {
-      setLoading(false)
-      return
-    }
-    try {
-      setLoading(true)
-      setError(null)
-
+  const { data, loading, error, refetch } = useQuery({
+    queryKey: ['gun', id],
+    queryFn: async () => {
+      if (!id) return null
       const response = await gunService.getGunById(id)
-
-      if (response.success) {
-        setGun(response.data)
-      } else {
-        setError(response.message || 'Product not found.')
+      if (response && response.success !== false) {
+        return response.data
       }
-    } catch (err) {
-      setError(err.message || 'Failed to load product details.')
-      setGun(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [id])
+      throw new Error(response?.message || 'Product not found.')
+    },
+    enabled: Boolean(id),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  })
 
-  useEffect(() => {
-    fetchGun()
-  }, [fetchGun])
-
-  return { gun, loading, error, refetch: fetchGun }
+  return {
+    gun: data || null,
+    loading,
+    error,
+    refetch,
+  }
 }
