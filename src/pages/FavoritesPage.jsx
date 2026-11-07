@@ -91,7 +91,7 @@ export default function FavoritesPage({ onSelectGun, onNavigateCatalog }) {
         {!isLoading && favError && favoriteItems.length === 0 && (
           <div className="state-box state-box--error">
             <AlertCircle size={28} />
-            <p>{favError}</p>
+            <p>{typeof favError === 'object' ? favError?.message || JSON.stringify(favError) : String(favError)}</p>
             <button type="button" className="btn btn--outline" onClick={refetch}>
               Retry Connection
             </button>

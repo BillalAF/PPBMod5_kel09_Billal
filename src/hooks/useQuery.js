@@ -60,7 +60,13 @@ export function useQuery({
         setIsStale(false)
         return result
       } catch (err) {
-        setError(err.message || 'An error occurred while fetching query data.')
+        const errorMsg =
+          typeof err?.message === 'string'
+            ? err.message
+            : typeof err === 'string'
+            ? err
+            : 'An error occurred while fetching query data.'
+        setError(errorMsg)
         throw err
       } finally {
         setLoading(false)
